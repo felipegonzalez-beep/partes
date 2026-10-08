@@ -142,9 +142,10 @@ button.small{padding:7px 11px;font-size:.88rem}
     <summary class="hint">Herramientas</summary>
     <div class="actions" style="margin-top:10px">
       <button type="button" class="small" id="btnPrueba">Llenar con datos de prueba</button>
+      <button type="button" class="small" id="btnUltimo">Reimprimir último parte</button>
       <button type="button" class="small" id="btnCsv">Descargar respaldo (Excel)</button>
     </div>
-    <p class="hint" style="margin-top:8px">Versión 1.0 · Los partes se guardan en este teléfono hasta enviarlos a la planilla.</p>
+    <p class="hint" style="margin-top:8px">Versión 1.1 · Los partes se guardan en este teléfono hasta enviarlos a la planilla.</p>
   </details>
 </section>
 
@@ -153,9 +154,11 @@ button.small{padding:7px 11px;font-size:.88rem}
   <div class="banner" id="emitido" hidden>
     <div><strong id="emitidoTxt">Parte emitido.</strong> <span class="hint">Quedó guardado y pendiente de envío.</span></div>
     <div class="actions">
-      <button type="button" id="btnReimprimir">Reimprimir</button>
-      <button type="button" class="primary" id="btnNuevo">Nuevo parte</button>
+      <button type="button" class="primary" id="btnImprimir" disabled>Preparando PDF…</button>
+      <button type="button" id="btnPdf" disabled>Guardar PDF</button>
+      <button type="button" id="btnNuevo">Nuevo parte</button>
     </div>
+    <p class="hint" id="printHint"></p>
   </div>
 
   <fieldset class="data">
@@ -366,12 +369,142 @@ function validar(){
 }
 function aviso(el,txt,ok){el.className="status "+(ok===true?"ok":ok===false?"bad":"");el.textContent=txt}
 
-function imprimir(d){
+/* ===== Impresión =====
+   iPhone: las apps de inicio ignoran window.print(), por eso se genera un PDF 13 × 18 cm
+   y se abre el menú Compartir (que incluye Imprimir). Otros equipos: impresión directa. */
+const ES_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+let pdfFile=null;
+
+function prepararImpresion(d){
   const area=$("printArea");area.textContent="";
   ["Ejemplar del citado","Ejemplar del Juzgado"].forEach(lbl=>{
     const s=$("sheet").cloneNode(true);s.removeAttribute("id");pintar(s,d,lbl);area.appendChild(s);
   });
-  setTimeout(()=>window.print(),60);
+}
+async function prepararPdf(d){
+  pdfFile=null;$("btnImprimir").disabled=true;$("btnPdf").disabled=true;$("btnImprimir").textContent="Preparando PDF…";
+  try{
+    const bytes=await crearPdf(d);
+    pdfFile=new File([bytes],"Parte_"+d.numero+".pdf",{type:"application/pdf"});
+  }catch(e){pdfFile=null}
+  $("btnImprimir").disabled=false;$("btnPdf").disabled=!pdfFile;
+  $("btnImprimir").textContent=ES_IOS?"Imprimir (Compartir)":"Imprimir";
+  $("printHint").textContent=ES_IOS?"En el menú Compartir elija «Imprimir», papel 13 × 18 cm (5 × 7 in). Salen dos ejemplares.":"Elija papel 13 × 18 cm (5 × 7 in) y escala 100 %. Salen dos ejemplares.";
+}
+async function imprimirAhora(){
+  if(!emitido)return;
+  if(ES_IOS&&pdfFile&&navigator.canShare&&navigator.canShare({files:[pdfFile]})){
+    try{await navigator.share({files:[pdfFile],title:"Parte "+emitido.numero})}catch(e){}
+    return;
+  }
+  prepararImpresion(emitido);window.print();
+}
+function guardarPdf(){
+  if(!pdfFile)return;
+  if(navigator.canShare&&navigator.canShare({files:[pdfFile]})){navigator.share({files:[pdfFile]}).catch(()=>{});return}
+  const a=document.createElement("a");a.href=URL.createObjectURL(pdfFile);a.download=pdfFile.name;document.body.appendChild(a);a.click();a.remove();
+}
+
+/* Dibuja el parte en un lienzo de alta resolución (300 ppp) */
+function dibujarParte(d,copia){
+  const W=130,H=180,K=11.811; /* px por mm */
+  const cv=document.createElement("canvas");cv.width=Math.round(W*K);cv.height=Math.round(H*K);
+  const c=cv.getContext("2d");c.scale(K,K);c.fillStyle="#fff";c.fillRect(0,0,W,H);
+  const PT=0.3528,AZUL="#084f87",TINTA="#0f1a2e",GRIS="#5b6575",SANS="Helvetica, Arial, sans-serif",SERIF="Georgia, 'Times New Roman', serif";
+  const fnt=(pt,b,f)=>{c.font=(b?"bold ":"")+(pt*PT).toFixed(3)+"px "+(f||SANS)};
+  const txt=(t,x,y,pt,o)=>{o=o||{};fnt(pt,o.b,o.f);c.fillStyle=o.col||TINTA;c.textAlign=o.al||"left";c.fillText(t,x,y)};
+  const linea=(x1,y1,x2,y2,w,col)=>{c.strokeStyle=col;c.lineWidth=w;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke()};
+  const partir=(t,w,pt,b)=>{fnt(pt,b);const out=[];let ln="";String(t||"").split(/\s+/).filter(Boolean).forEach(p=>{const pr=ln?ln+" "+p:p;if(c.measureText(pr).width<=w||!ln)ln=pr;else{out.push(ln);ln=p}});if(ln)out.push(ln);return out};
+  const L=7.5,R=W-7.5,AN=R-L,CW=(AN-6)/3;
+
+  /* Encabezado */
+  const logo=document.querySelector(".sh-logo");let lw=0;
+  if(logo&&logo.naturalWidth){lw=17*logo.naturalWidth/logo.naturalHeight;c.drawImage(logo,L,7,lw,17)}
+  const tx=L+lw+3;
+  txt("Dirección de Obras Municipales",tx,15,8.5,{b:1});
+  txt("Municipalidad de Pucón",tx,18.6,7.5,{col:"#38445a"});
+  txt("PARTE DE INFRACCIÓN",tx,23.6,13,{b:1,f:SERIF,col:AZUL});
+  txt("N.º",R,17.5,6.5,{al:"right",col:GRIS});
+  txt(d.numero,R,23.6,12,{b:1,al:"right",col:"#b42318"});
+  linea(L,26,R,26,0.5,AZUL);
+
+  let esc=1;
+  const cuerpo=(dibuja)=>{
+    let y=29.5;
+    const campo=(x,w,lab,val)=>{ /* devuelve alto usado */
+      if(dibuja)txt(lab.toUpperCase(),x,y+2.2,6.5*esc,{b:1,col:GRIS});
+      const ls=partir(val,w,9*esc,1);
+      ls.forEach((l,i)=>{if(dibuja)txt(l,x,y+5.6+i*4*esc,9*esc,{b:1})});
+      return 2.2+3.4+(Math.max(ls.length,1)-1)*4*esc+1.8;
+    };
+    const fila=(items)=>{let h=0;items.forEach(([col,span,lab,val])=>{h=Math.max(h,campo(L+col*(CW+3),CW*span+3*(span-1),lab,val))});y+=h;};
+    const seccion=(t)=>{y+=0.8;if(dibuja){txt(t,L,y+2.2,6.5*esc,{b:1,col:AZUL});linea(L,y+3.1,R,y+3.1,0.2,"#c8d0de")}y+=4.6;};
+    fila([[0,1,"Fecha",fechaCorta(d.fecha)],[1,1,"Hora",d.hora?d.hora+" h":""],[2,1,"Rol de avalúo",d.rol||"—"]]);
+    fila([[0,3,"Lugar de la infracción",d.lugar]]);
+    seccion("INFRACTOR");
+    fila([[0,2,"Nombre",d.nombre],[2,1,"RUT",d.rut]]);
+    fila([[0,3,"Domicilio",d.domicilio]]);
+    fila([[0,1,"Teléfono",d.telefono||"—"],[1,2,"Correo electrónico",d.correo||"—"]]);
+    seccion("INFRACCIÓN");
+    const li=partir(d.infraccion,AN,9.5*esc,0),lh=4.4*esc;
+    li.forEach((l,i)=>{if(dibuja)txt(l,L,y+3.4+i*lh,9.5*esc)});
+    y+=li.length*lh+2.4;
+    /* Citación con negritas */
+    const seg=[["Fue citado ",0],[d.citacion,1],[" para comparecer ante el ",0],[d.juzgado,1],[" el día ",0],[fechaLarga(d.jpl_fecha,true)||"________",1],[", a las ",0],[d.jpl_hora?d.jpl_hora+" horas":"____ horas",1],[", bajo apercibimiento de proceder en su rebeldía.",0]];
+    const pal=[];seg.forEach(([t,b])=>t.split(/(\s+)/).forEach(w=>{if(w)pal.push([w,b])}));
+    const BW=AN-5.2,lineas=[[]];let ancho=0;
+    pal.forEach(([w,b])=>{fnt(9*esc,b);const m=c.measureText(w).width;if(ancho+m>BW&&ancho>0&&!/^\s+$/.test(w)){lineas.push([]);ancho=0}if(!(ancho===0&&/^\s+$/.test(w))){lineas[lineas.length-1].push([w,b,m]);ancho+=m}});
+    const blh=4.2*esc,bh=lineas.length*blh+3.6;
+    if(dibuja){c.fillStyle="#eef4fa";c.strokeStyle=AZUL;c.lineWidth=0.35;c.beginPath();
+      if(c.roundRect)c.roundRect(L,y,AN,bh,1.2);else c.rect(L,y,AN,bh);c.fill();c.stroke();
+      lineas.forEach((ln,i)=>{let x=L+2.6;ln.forEach(([w,b,m])=>{txt(w,x,y+2+3.2*esc+i*blh,9*esc,{b:b});x+=m})});}
+    y+=bh+2;
+    if(d.se_nego==="Sí"){if(dibuja)txt("EL CITADO SE NEGÓ A FIRMAR LA RECEPCIÓN DEL PRESENTE PARTE",W/2,y+3,7.5*esc,{b:1,al:"center",col:"#b42318"});y+=5}
+    return y;
+  };
+  while(esc>0.78&&cuerpo(false)>150)esc-=0.04;
+  cuerpo(true);
+
+  /* Firmas y pie */
+  const fy=157;
+  [["Inspector municipal",d.inspector],["Testigo",d.testigo],["Recibido",""]].forEach(([rol,nom],i)=>{
+    const x=L+i*(CW+3);linea(x,fy,x+CW,fy,0.25,"#38445a");
+    if(nom)txt(nom,x+CW/2,fy+3.4,7.5,{b:1,al:"center"});
+    txt(rol,x+CW/2,fy+6.6,7,{al:"center",col:"#38445a"});
+  });
+  linea(L,167.5,R,167.5,0.2,"#c8d0de");
+  const pie=partir("Conserve este documento y preséntelo al comparecer ante el Juzgado. La no comparecencia faculta al tribunal para proceder en su rebeldía.",AN-36,6.3,0);
+  pie.forEach((l,i)=>txt(l,L,170.6+i*2.8,6.3,{col:GRIS}));
+  if(copia)txt(copia,R,170.6,6.5,{b:1,al:"right"});
+  return cv;
+}
+
+/* PDF mínimo: una imagen JPEG por página, 130 × 180 mm */
+async function crearPdf(d){
+  const paginas=["Ejemplar del citado","Ejemplar del Juzgado"].map(lbl=>{
+    const cv=dibujarParte(d,lbl);const b64=cv.toDataURL("image/jpeg",0.9).split(",")[1];
+    const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    return{jpg:u,w:cv.width,h:cv.height};
+  });
+  const enc=new TextEncoder(),partes=[],ofs=[];let pos=0;
+  const add=x=>{const u=typeof x==="string"?enc.encode(x):x;partes.push(u);pos+=u.length};
+  const PW=368.50,PH=510.24,n=paginas.length;
+  add("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n".replace(/[\xE2\xE3\xCF\xD3]/g,"A"));
+  const obj=(id,body)=>{ofs[id]=pos;add(id+" 0 obj\n");if(Array.isArray(body))body.forEach(add);else add(body);add("\nendobj\n")};
+  const kids=paginas.map((_,i)=>(3+i*3)+" 0 R").join(" ");
+  obj(1,"<< /Type /Catalog /Pages 2 0 R >>");
+  obj(2,"<< /Type /Pages /Kids ["+kids+"] /Count "+n+" >>");
+  paginas.forEach((p,i)=>{
+    const pg=3+i*3,ct=pg+1,im=pg+2,cs="q "+PW+" 0 0 "+PH+" 0 0 cm /Im0 Do Q";
+    obj(pg,"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+PW+" "+PH+"] /Resources << /XObject << /Im0 "+im+" 0 R >> >> /Contents "+ct+" 0 R >>");
+    obj(ct,"<< /Length "+cs.length+" >>\nstream\n"+cs+"\nendstream");
+    obj(im,["<< /Type /XObject /Subtype /Image /Width "+p.w+" /Height "+p.h+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+p.jpg.length+" >>\nstream\n",p.jpg,"\nendstream"]);
+  });
+  const total=3+n*3,xref=pos;
+  let x="xref\n0 "+total+"\n0000000000 65535 f \n";for(let i=1;i<total;i++)x+=String(ofs[i]).padStart(10,"0")+" 00000 n \n";
+  add(x+"trailer\n<< /Size "+total+" /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF");
+  const out=new Uint8Array(pos);let o=0;partes.forEach(u=>{out.set(u,o);o+=u.length});
+  return out;
 }
 
 function bloquear(on){document.querySelectorAll("fieldset.data").forEach(f=>f.disabled=on);$("emitido").hidden=!on;$("mainActions").hidden=on}
@@ -387,9 +520,18 @@ $("btnEmitir").onclick=()=>{
   if(!store.set("dom_partes",reg)){aviso($("status"),"No se pudo guardar en el teléfono. No imprima: use el talonario.",false);return}
   cfg.corr=Number(cfg.corr)+1;store.set("dom_cfg",cfg);
   emitido=d;bloquear(true);$("emitidoTxt").textContent="Parte "+d.numero+" emitido.";aviso($("status"),"");
-  render();cabecera();window.scrollTo(0,0);imprimir(d);
+  render();cabecera();window.scrollTo(0,0);
+  if(!ES_IOS){prepararImpresion(d);window.print()}
+  prepararPdf(d);
 };
-$("btnReimprimir").onclick=()=>{if(emitido)imprimir(emitido)};
+$("btnImprimir").onclick=imprimirAhora;
+$("btnPdf").onclick=guardarPdf;
+$("btnUltimo").onclick=()=>{
+  const reg=store.get("dom_partes",[]);
+  if(!reg.length){aviso($("cfgStatus"),"Aún no hay partes emitidos en este teléfono.",false);return}
+  emitido=reg[reg.length-1];bloquear(true);$("emitidoTxt").textContent="Parte "+emitido.numero+" (reimpresión).";
+  $("ajustes").hidden=true;render();window.scrollTo(0,0);prepararPdf(emitido);
+};
 $("btnNuevo").onclick=()=>{
   emitido=null;bloquear(false);
   ["rol","lugar","nombre","rut","dom","fono","mail","m2","obs","libre","testigo"].forEach(id=>$(id).value="");
@@ -473,7 +615,11 @@ $("rut").addEventListener("blur",()=>{if(rutValido($("rut").value)){$("rut").val
 window.addEventListener("resize",fit);
 cabecera();render();
 if(!cfg.serie)abrirAjustes();
-if("serviceWorker" in navigator&&location.protocol.startsWith("http")){navigator.serviceWorker.register("sw.js").catch(()=>{})}
+if("serviceWorker" in navigator&&location.protocol.startsWith("http")){
+  const habia=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{if(habia&&!emitido)location.reload()});
+  navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});
+}
 </script>
 </body>
 </html>
