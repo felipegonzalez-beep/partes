@@ -1,5 +1,5 @@
 /* Guarda la app en el teléfono para que funcione sin señal. Cambie VERSION al publicar cambios. */
-const VERSION = "partes-dom-v2";
+const VERSION = "partes-dom-v3";
 const ARCHIVOS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
