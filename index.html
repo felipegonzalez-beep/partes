@@ -111,10 +111,8 @@ button.emitir:active{transform:translateY(1px)}
 .visorBar span{min-width:60px;text-align:center;font-weight:600}
 .visorArea{overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;padding:12px}
 .visorArea img{display:block;margin:0 auto;background:#fff;max-width:none;height:auto}
-.largo{text-align:center;font-size:.85rem;color:var(--muted);padding:6px 10px;border-radius:8px}
-.largo b{color:var(--fg)}
-.largo.exceso{color:var(--danger);border:1px solid var(--danger);font-weight:600}
-.largo.exceso b{color:var(--danger)}
+.cont{display:block;font-size:.8rem;color:var(--muted);margin-top:4px;text-align:right}
+.cont.exceso{color:var(--danger);font-weight:600;text-align:left}
 .ver{margin:14px 0 4px;text-align:center;font-size:.8rem;color:var(--muted);letter-spacing:.02em}
 .ver span{font-weight:700}
 .copias{display:grid;gap:8px}
@@ -253,8 +251,8 @@ button.emitir:active{transform:translateY(1px)}
     <legend>Infracción</legend>
     <label>Tipo de infracción<select id="tipo"></select></label>
     <label>Superficie aprox. (m²) <small>Si corresponde</small><input id="m2" type="number" min="0" step="0.1" inputmode="decimal"></label>
-    <label id="obsWrap">Observaciones <small>Opcional, se agrega al final</small><textarea id="obs" spellcheck="true" lang="es"></textarea></label>
-    <label id="libreWrap" hidden>Descripción completa de la infracción<textarea id="libre" spellcheck="true" lang="es"></textarea></label>
+    <label id="obsWrap">Observaciones <small>Opcional, se agrega al final</small><textarea id="obs" spellcheck="true" lang="es"></textarea><span class="cont" id="obsCont"></span></label>
+    <label id="libreWrap" hidden>Descripción completa de la infracción<textarea id="libre" spellcheck="true" lang="es" maxlength="299"></textarea><span class="cont" id="libreCont"></span></label>
   </fieldset>
 
   <fieldset class="data">
@@ -287,7 +285,6 @@ button.emitir:active{transform:translateY(1px)}
 <section class="preview" aria-label="Vista previa del parte">
   <h2>Vista previa · rollo 10,4 cm</h2>
   <div class="rollo" id="rollo" title="Toque para ampliar"></div>
-  <div class="largo" id="largo" aria-live="polite"></div>
   <button type="button" class="btnZoom" id="btnZoom">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5M11 8v6M8 11h6"/></svg>
     Ver vista previa en grande
@@ -317,7 +314,7 @@ button.emitir:active{transform:translateY(1px)}
 
 <script>
 "use strict";
-const APP_VERSION="1.21";
+const APP_VERSION="1.22";
 /* Tipografía del parte: Carlito, equivalente métrico libre de Calibri (SIL Open Font License 1.1).
    Calibri es la tipografía institucional para documentos formales según el Manual de Normas Gráficas
    de la Municipalidad de Pucón (3.2). Va incluida en la app para que el parte salga idéntico en cualquier teléfono. */
@@ -332,7 +329,6 @@ const fuentesListas=(async()=>{
   }catch(e){console.warn("No se pudo cargar la tipografía del parte",e)}
   try{if(typeof vistaPrevia==="function"&&!$("app").hidden)vistaPrevia()}catch(e){}
 })();
-const LARGO_MAX=26; /* cm: largo máximo recomendado del parte */
 document.querySelectorAll(".verNum").forEach(e=>e.textContent=APP_VERSION);
 /* Catálogo por defecto: se reemplaza por el de la planilla al conectar. {m2} = superficie. */
 const CATALOGO_BASE=[
@@ -438,6 +434,19 @@ function testigoActual(){
 }
 function catActual(){return catalogo.concat([OTRA]).find(c=>c.id===$("tipo").value)||OTRA}
 
+/* Límite de la descripción de la infracción: mantiene el parte dentro del largo máximo (26 cm) */
+const MAX_INFRACCION=300;
+function baseInfraccion(){const o=$("obs").value;$("obs").value="";const b=textoInfraccion();$("obs").value=o;return b}
+function contarInfraccion(){
+  const otra=$("tipo").value==="otra",total=textoInfraccion().length,exc=total>MAX_INFRACCION;
+  if(otra){$("libre").maxLength=Math.max(MAX_INFRACCION-1,$("libre").value.length)}
+  else{const disp=Math.max(0,MAX_INFRACCION-baseInfraccion().length-2);$("obs").maxLength=Math.max(disp,$("obs").value.length)}
+  const el=$(otra?"libreCont":"obsCont"),resto=MAX_INFRACCION-total;
+  el.textContent=exc?"Excede en "+(-resto)+" caracteres el máximo de la descripción ("+MAX_INFRACCION+"). Resúmala para poder emitir el parte."
+    :"Descripción de la infracción: "+total+" de "+MAX_INFRACCION+" caracteres"+(otra?"":" (incluye el texto del tipo de infracción)");
+  el.classList.toggle("exceso",exc);
+  return !exc;
+}
 function textoInfraccion(){
   const t=catActual();
   if(t.id==="otra")return frase($("libre").value);
@@ -470,6 +479,7 @@ let tPrev=0;
 function render(){
   $("libreWrap").hidden=$("tipo").value!=="otra";
   $("obsWrap").hidden=$("tipo").value==="otra";
+  contarInfraccion();
   $("testigoOtroWrap").hidden=$("testigoSel").value!=="otro";
   $("recibeWrap").hidden=!PRESENCIAL(modo());
   $("recDatos").hidden=$("recMismo").checked;
@@ -484,10 +494,6 @@ function vistaPrevia(){
   const cv=dibujarParte(emitido||datos(),"EJEMPLAR DEL CITADO",7,"Impreso el __/__/____ a las __:__:__ h");
   cv.onclick=abrirVisor;
   const box=$("rollo");box.textContent="";box.appendChild(cv);
-  const cm=parseFloat((cv.dataset.mm||"0x0").split("x")[1])/10,exc=cm>LARGO_MAX;
-  const el=$("largo");el.classList.toggle("exceso",exc);
-  el.innerHTML="Largo del parte: <b>"+cm.toFixed(1).replace(".",",")+"\u00a0cm</b> · máximo recomendado "+LARGO_MAX+"\u00a0cm"+
-    (exc?"<br>El parte excede el largo recomendado. Resuma la descripción, las observaciones o los datos más extensos.":"");
 }
 /* ===== Visor ampliado de la vista previa ===== */
 let vz=1;
@@ -533,6 +539,8 @@ function validar(){
   if(PRESENCIAL(modo())&&!$("recMismo").checked&&$("recRut").value.trim()&&!rutValido($("recRut").value)){$("recRut").classList.add("invalid");falta.push("recRut")}
   req.forEach(id=>{const bad=!$(id).value.trim()||(id==="rut"&&!rutValido($(id).value))||(id==="mail"&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($(id).value.trim()));$(id).classList.toggle("invalid",bad);if(bad)falta.push(id)});
   if($("fecha").value&&$("jplF").value&&$("jplF").value<=$("fecha").value){$("jplF").classList.add("invalid");falta.push("jplF")}
+  const idInf=$("tipo").value==="otra"?"libre":"obs";
+  if(!contarInfraccion()){$(idInf).classList.add("invalid");falta.push(idInf)}else if(idInf==="obs")$("obs").classList.remove("invalid");
   return falta;
 }
 function aviso(el,txt,ok){el.className="status "+(ok===true?"ok":ok===false?"bad":"");el.textContent=txt}
