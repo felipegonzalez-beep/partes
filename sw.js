@@ -1,6 +1,6 @@
 /* Guarda la app en el teléfono para que funcione sin señal. Cambie VERSION al publicar cambios. */
-const VERSION = "partes-dom-v4";
-const ARCHIVOS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+const VERSION = "partes-dom-v7";
+const ARCHIVOS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));
