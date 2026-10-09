@@ -66,6 +66,8 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .rolbox{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
 .rolbox span{font-weight:700;font-size:1.2rem;color:var(--muted)}
 .rolbox input{text-align:center;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.recibe{display:grid;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+#recDatos{display:grid;gap:12px}
 .check{display:flex;gap:10px;align-items:flex-start}
 .check input{width:auto;margin-top:3px}
 .hint{font-size:.82rem;color:var(--muted);margin:0}
@@ -158,7 +160,7 @@ button.small{padding:7px 11px;font-size:.88rem}
       <button type="button" class="small" id="btnUltimo">Reimprimir último parte</button>
       <button type="button" class="small" id="btnCsv">Descargar respaldo (Excel)</button>
     </div>
-    <p class="hint" style="margin-top:8px">Versión 1.9 · Los partes se guardan en este teléfono hasta enviarlos a la planilla.</p>
+    <p class="hint" style="margin-top:8px">Versión 1.11 · Los partes se guardan en este teléfono hasta enviarlos a la planilla.</p>
   </details>
 </section>
 
@@ -228,7 +230,15 @@ button.small{padding:7px 11px;font-size:.88rem}
     </div>
     <label>Testigo<select id="testigoSel"></select></label>
     <label id="testigoOtroWrap" hidden>Nombre del testigo<input id="testigo" autocapitalize="words"></label>
-    <label class="check" id="negadoWrap"><input id="negado" type="checkbox"> El citado se negó a firmar la recepción</label>
+    <div class="recibe" id="recibeWrap">
+      <div class="rollab">Recibe el parte</div>
+      <label class="check"><input id="recMismo" type="checkbox" checked> Es el mismo infractor</label>
+      <div id="recDatos" hidden>
+        <label>Nombre de quien recibe<input id="recNombre" autocapitalize="words"></label>
+        <label>RUT de quien recibe<input id="recRut" placeholder="12.345.678-5" autocomplete="off"><span id="recRutMsg" class="err" aria-live="polite"></span></label>
+      </div>
+      <label class="check" id="negadoWrap"><input id="negado" type="checkbox"> Se negó a firmar la recepción</label>
+    </div>
   </fieldset>
 
   <div class="actions" id="mainActions">
@@ -321,6 +331,10 @@ function llenarTestigos(){
   if([...sel.options].some(o=>o.value===prev))sel.value=prev;
   $("testigoOtroWrap").hidden=sel.value!=="otro";
 }
+function recibe(){
+  if($("recMismo").checked)return{nombre:titulo($("nombre").value),rut:$("rut").value.trim()?formatoRut($("rut").value):""};
+  return{nombre:titulo($("recNombre").value),rut:$("recRut").value.trim()?formatoRut($("recRut").value):""};
+}
 function testigoActual(){
   const v=$("testigoSel").value;
   if(v==="otro")return{nombre:titulo($("testigo").value),cargo:""};
@@ -350,6 +364,7 @@ function datos(){
     tipo:catActual().nombre,m2:$("m2").value,infraccion:textoInfraccion(),
     citacion:modo(),jpl_fecha:$("jplF").value,jpl_hora:$("jplH").value,
     testigo:testigoActual().nombre,testigo_cargo:testigoActual().cargo,
+    recibe_nombre:PRESENCIAL(modo())?recibe().nombre:"",recibe_rut:PRESENCIAL(modo())?recibe().rut:"",
     se_nego:PRESENCIAL(modo())&&$("negado").checked?"Sí":"No",
     juzgado:conf.juzgado||"Juzgado de Policía Local de Pucón"
   };
@@ -360,7 +375,10 @@ function render(){
   $("libreWrap").hidden=$("tipo").value!=="otra";
   $("obsWrap").hidden=$("tipo").value==="otra";
   $("testigoOtroWrap").hidden=$("testigoSel").value!=="otro";
-  $("negadoWrap").hidden=!PRESENCIAL(modo());
+  $("recibeWrap").hidden=!PRESENCIAL(modo());
+  $("recDatos").hidden=$("recMismo").checked;
+  const rr=$("recRut").value.trim(),rbad=!$("recMismo").checked&&!!rr&&!rutValido(rr);
+  $("recRutMsg").textContent=rbad?"RUT no válido: revise el dígito verificador.":"";$("recRut").classList.toggle("invalid",rbad);
   const r=$("rut").value.trim(),bad=!!r&&!rutValido(r);
   $("rutMsg").textContent=bad?"RUT no válido: revise el dígito verificador.":"";
   $("rut").classList.toggle("invalid",bad);
@@ -389,9 +407,11 @@ function validar(){
   if($("tipo").value==="otra")req.push("libre");
   if(modo()==="mediante correo electrónico")req.push("mail");
   if($("testigoSel").value==="otro")req.push("testigo");
+  if(PRESENCIAL(modo())&&!$("recMismo").checked)req.push("recNombre");
   const falta=[];
   const re=rolError();$("rolA").classList.toggle("invalid",!!re&&!solo5($("rolA").value));$("rolB").classList.toggle("invalid",!!re&&!solo5($("rolB").value));
   $("rolMsg").textContent=re;if(re)falta.push(solo5($("rolA").value)?"rolB":"rolA");
+  if(PRESENCIAL(modo())&&!$("recMismo").checked&&$("recRut").value.trim()&&!rutValido($("recRut").value)){$("recRut").classList.add("invalid");falta.push("recRut")}
   req.forEach(id=>{const bad=!$(id).value.trim()||(id==="rut"&&!rutValido($(id).value))||(id==="mail"&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($(id).value.trim()));$(id).classList.toggle("invalid",bad);if(bad)falta.push(id)});
   if($("fecha").value&&$("jplF").value&&$("jplF").value<=$("fecha").value){$("jplF").classList.add("invalid");falta.push("jplF")}
   return falta;
@@ -467,9 +487,9 @@ function dibujarParte(d,copia,K){
   fila([[L,C3,"Fecha",fechaCorta(d.fecha)],[L+C3+3,C3,"Hora",d.hora?d.hora+" h":""],[L+2*(C3+3),C3,"Rol de avalúo",d.rol||"—"]]);
   fila([[L,AN,"Lugar de la infracción",d.lugar]]);
   sep(true);sec("INFRACTOR");
-  fila([[L,AN,"Nombre",d.nombre]]);
-  fila([[L,C3,"RUT",d.rut],[L+C3+3,2*C3+3,"Teléfono",d.telefono||"—"]]);
-  fila([[L,AN,"Domicilio",d.domicilio]]);
+  const C2=2*C3+3,X3=L+2*(C3+3);
+  fila([[L,C2,"Nombre",d.nombre],[X3,C3,"RUT",d.rut]]);
+  fila([[L,C2,"Domicilio",d.domicilio],[X3,C3,"Teléfono",d.telefono||"—"]]);
   fila([[L,AN,"Correo electrónico",d.correo||"—"]]);
   sep(true);sec("INFRACCIÓN");
   const li=partir(d.infraccion,AN,9.5,0);li.forEach((l,i)=>justif(l,L,y+3.6+i*4.4,AN,9.5,i===li.length-1));y+=li.length*4.4+1.6;
@@ -485,10 +505,10 @@ function dibujarParte(d,copia,K){
   y+=bh+2;
   if(d.se_nego==="Sí"){T("EL CITADO SE NEGÓ A FIRMAR LA RECEPCIÓN",W/2,y+3,8,{b:1,al:"center"});y+=5}
 
-  /* Firmas */
-  y+=11;
+  /* Firmas: 20 mm libres para firmar sobre la línea */
+  y+=20;
   const firmas=[["Inspector",d.inspector,""],["Testigo",d.testigo,d.testigo_cargo||""]];
-  if(PRESENCIAL(d.citacion))firmas.push(["Recibido","",""]);
+  if(PRESENCIAL(d.citacion))firmas.push(["Recibido",d.recibe_nombre||"",d.recibe_rut?"RUT "+d.recibe_rut:""]);
   const n=firmas.length,FW=(AN-3*(n-1))/n;let alto=0;
   firmas.forEach(([rol,nom,cargo],i)=>{
     const x=L+i*(FW+3),cx=x+FW/2;let yy=y;
@@ -566,7 +586,7 @@ $("btnUltimo").onclick=()=>{
 };
 $("btnNuevo").onclick=()=>{
   emitido=null;bloquear(false);
-  ["rolA","rolB","lugar","nombre","rut","dom","fono","mail","m2","obs","libre","testigo"].forEach(id=>$(id).value="");
+  ["rolA","rolB","lugar","nombre","rut","dom","fono","mail","m2","obs","libre","testigo","recNombre","recRut"].forEach(id=>$(id).value="");$("recMismo").checked=true;
   $("testigoSel").value="";$("negado").checked=false;ahora();render();window.scrollTo(0,0);
 };
 
@@ -672,7 +692,7 @@ $("btnPrueba").onclick=()=>{
 $("btnCsv").onclick=()=>{
   const reg=store.get("dom_partes",[]);
   if(!reg.length){aviso($("cfgStatus"),"Aún no hay partes en este teléfono.",false);return}
-  const cols=["numero","fecha","hora","rol","lugar","nombre","rut","domicilio","telefono","correo","tipo","m2","infraccion","citacion","jpl_fecha","jpl_hora","testigo","testigo_cargo","se_nego","inspector","enviado"];
+  const cols=["numero","fecha","hora","rol","lugar","nombre","rut","domicilio","telefono","correo","tipo","m2","infraccion","citacion","jpl_fecha","jpl_hora","testigo","testigo_cargo","recibe_nombre","recibe_rut","se_nego","inspector","enviado"];
   const esc=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
   const csv="﻿"+cols.join(";")+"\n"+reg.map(r=>cols.map(c=>esc(c==="enviado"?(r[c]?"Sí":"No"):r[c])).join(";")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
@@ -699,6 +719,8 @@ document.querySelectorAll("form input,form select,form textarea").forEach(el=>el
 $("rolB").addEventListener("keydown",e=>{if(e.key==="Backspace"&&!$("rolB").value)$("rolA").focus()});
 $("rut").addEventListener("blur",()=>{if(rutValido($("rut").value)){$("rut").value=formatoRut($("rut").value);render()}});
 document.querySelectorAll('input[name="modo"]').forEach(r=>r.addEventListener("change",render));
+$("recMismo").addEventListener("change",()=>{render();if(!$("recMismo").checked)$("recNombre").focus()});
+$("recRut").addEventListener("blur",()=>{if(rutValido($("recRut").value)){$("recRut").value=formatoRut($("recRut").value);render()}});
 $("testigoSel").addEventListener("change",()=>{render();if($("testigoSel").value==="otro")$("testigo").focus()});
 if($("logoSrc").complete)prepararLogo();else $("logoSrc").addEventListener("load",()=>{prepararLogo();render()});
 $("lgUser").value=store.get("dom_ultimo","")||"";
