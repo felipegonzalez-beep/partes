@@ -111,6 +111,10 @@ button.emitir:active{transform:translateY(1px)}
 .visorBar span{min-width:60px;text-align:center;font-weight:600}
 .visorArea{overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;padding:12px}
 .visorArea img{display:block;margin:0 auto;background:#fff;max-width:none;height:auto}
+.largo{text-align:center;font-size:.85rem;color:var(--muted);padding:6px 10px;border-radius:8px}
+.largo b{color:var(--fg)}
+.largo.exceso{color:var(--danger);border:1px solid var(--danger);font-weight:600}
+.largo.exceso b{color:var(--danger)}
 .ver{margin:14px 0 4px;text-align:center;font-size:.8rem;color:var(--muted);letter-spacing:.02em}
 .ver span{font-weight:700}
 .copias{display:grid;gap:8px}
@@ -283,6 +287,7 @@ button.emitir:active{transform:translateY(1px)}
 <section class="preview" aria-label="Vista previa del parte">
   <h2>Vista previa · rollo 10,4 cm</h2>
   <div class="rollo" id="rollo" title="Toque para ampliar"></div>
+  <div class="largo" id="largo" aria-live="polite"></div>
   <button type="button" class="btnZoom" id="btnZoom">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5M11 8v6M8 11h6"/></svg>
     Ver vista previa en grande
@@ -312,7 +317,8 @@ button.emitir:active{transform:translateY(1px)}
 
 <script>
 "use strict";
-const APP_VERSION="1.17";
+const APP_VERSION="1.18";
+const LARGO_MAX=26; /* cm: largo máximo recomendado del parte */
 document.querySelectorAll(".verNum").forEach(e=>e.textContent=APP_VERSION);
 /* Catálogo por defecto: se reemplaza por el de la planilla al conectar. {m2} = superficie. */
 const CATALOGO_BASE=[
@@ -464,6 +470,10 @@ function vistaPrevia(){
   const cv=dibujarParte(emitido||datos(),"EJEMPLAR DEL CITADO",7);
   cv.onclick=abrirVisor;
   const box=$("rollo");box.textContent="";box.appendChild(cv);
+  const cm=parseFloat((cv.dataset.mm||"0x0").split("x")[1])/10,exc=cm>LARGO_MAX;
+  const el=$("largo");el.classList.toggle("exceso",exc);
+  el.innerHTML="Largo del parte: <b>"+cm.toFixed(1).replace(".",",")+"\u00a0cm</b> · máximo recomendado "+LARGO_MAX+"\u00a0cm"+
+    (exc?"<br>El parte excede el largo recomendado. Resuma la descripción, las observaciones o los datos más extensos.":"");
 }
 /* ===== Visor ampliado de la vista previa ===== */
 let vz=1;
