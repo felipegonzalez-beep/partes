@@ -35,7 +35,15 @@ body{background:var(--bg);color:var(--fg);font:16px/1.45 var(--sans);padding-inl
 .toplogo{width:calc(100% - 60px);max-width:330px;height:auto;background:#fff;border-radius:10px;padding:8px 12px;display:block}
 .gear{width:48px;height:48px;padding:0;display:grid;place-items:center;border-radius:12px;flex:none;color:var(--fg)}
 .gear[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
-body.vista-ajustes .wrap,body.vista-ajustes .top .tools{display:none}
+body.vista-panel .wrap,body.vista-panel .top .tools{display:none}
+.listahead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.partes{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.partes li{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;background:var(--bg)}
+.partes .num{font-weight:700;font-variant-numeric:tabular-nums}
+.partes .det{grid-column:1;font-size:.85rem;color:var(--muted);min-width:0;overflow-wrap:anywhere}
+.partes button{grid-row:1/span 2;grid-column:2}
+.estado{font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;border:1px solid}
+.estado.env{color:var(--ok);border-color:var(--ok)}.estado.pen{color:var(--warn);border-color:var(--warn)}
 .top .who{color:var(--muted);font-size:.85rem}
 .top .tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .chip{font-size:.8rem;font-weight:700;border-radius:999px;padding:4px 10px;border:1px solid var(--line)}
@@ -68,6 +76,8 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .rolbox input{text-align:center;letter-spacing:.08em;font-variant-numeric:tabular-nums}
 .recibe{display:grid;gap:10px;border-top:1px solid var(--line);padding-top:12px}
 #recDatos{display:grid;gap:12px}
+.gps{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.85rem;color:var(--muted)}
+.gps.ok span{color:var(--ok);font-weight:600}
 .check{display:flex;gap:10px;align-items:flex-start}
 .check input{width:auto;margin-top:3px}
 .hint{font-size:.82rem;color:var(--muted);margin:0}
@@ -138,8 +148,19 @@ button.small{padding:7px 11px;font-size:.88rem}
   <div class="tools">
     <span class="chip" id="pendChip">0 pendientes</span>
     <button type="button" class="small" id="btnSync">Enviar a planilla</button>
+    <button type="button" class="small" id="btnLista">Mis partes</button>
   </div>
 </header>
+
+<section class="panel" id="lista" hidden aria-label="Mis partes">
+  <div class="listahead">
+    <h2>Mis partes</h2>
+    <button type="button" class="small" id="btnCerrarLista">Volver al parte</button>
+  </div>
+  <p class="hint">Los partes emitidos no se pueden modificar; solo consultar y reimprimir. Los enviados quedan además respaldados en la planilla y en PDF.</p>
+  <div class="status" id="listaStatus" aria-live="polite"></div>
+  <ul class="partes" id="listaPartes"></ul>
+</section>
 
 <section class="panel" id="ajustes" hidden aria-label="Ajustes">
   <h2>Ajustes</h2>
@@ -160,7 +181,7 @@ button.small{padding:7px 11px;font-size:.88rem}
       <button type="button" class="small" id="btnUltimo">Reimprimir último parte</button>
       <button type="button" class="small" id="btnCsv">Descargar respaldo (Excel)</button>
     </div>
-    <p class="hint" style="margin-top:8px">Versión 1.11 · Los partes se guardan en este teléfono hasta enviarlos a la planilla.</p>
+    <p class="hint" style="margin-top:8px">Versión 1.14 · Los partes se guardan en este teléfono hasta enviarlos a la planilla.</p>
   </details>
 </section>
 
@@ -195,6 +216,7 @@ button.small{padding:7px 11px;font-size:.88rem}
       <span class="err" id="rolMsg" aria-live="polite"></span>
     </div>
     <label>Lugar de la infracción<input id="lugar" placeholder="Calle, n.º, sector"></label>
+    <div class="gps"><span id="gpsTxt">Ubicación GPS: buscando…</span><button type="button" class="small" id="btnGps">Actualizar</button></div>
   </fieldset>
 
   <fieldset class="data">
@@ -288,6 +310,13 @@ let cfg={usuario:"",serie:"",clave:"",insp:"",corr:1};
   store.set("dom_users",us);store.set("dom_ultimo",k);try{localStorage.removeItem("dom_cfg")}catch(e){}
 })();
 /* Numeración por serie (INS1, INS2…): se guarda aparte del usuario para que un cambio de usuario no reinicie el correlativo */
+/* ===== Bitácora: se guarda en el teléfono y se envía a la planilla con cualquier conexión ===== */
+function ahoraTxt(d){d=d||new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds())}
+function bitacora(evento,numero,detalle){
+  const b=store.get("dom_bitacora",[]);
+  b.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),fecha:ahoraTxt(),usuario:cfg.usuario||"",serie:cfg.serie||"",evento:evento,numero:numero||"",detalle:detalle||""});
+  store.set("dom_bitacora",b.slice(-2000));
+}
 function guardarUsuario(){
   const us=store.get("dom_users",{});us[cfg.usuario]=Object.assign(us[cfg.usuario]||{},{nombre:cfg.insp,serie:cfg.serie});store.set("dom_users",us);
   const cs=store.get("dom_corr",{});cs[cfg.serie]=Number(cfg.corr);store.set("dom_corr",cs);
@@ -335,6 +364,20 @@ function recibe(){
   if($("recMismo").checked)return{nombre:titulo($("nombre").value),rut:$("rut").value.trim()?formatoRut($("rut").value):""};
   return{nombre:titulo($("recNombre").value),rut:$("recRut").value.trim()?formatoRut($("recRut").value):""};
 }
+/* ===== Coordenadas GPS (funciona sin datos móviles; requiere permiso de ubicación) ===== */
+let gps=null;
+function coordTexto(g){return g?g.lat.toFixed(5)+", "+g.lon.toFixed(5)+" (±"+Math.round(g.prec)+" m)":""}
+function pedirGps(){
+  if(emitido)return;
+  if(!navigator.geolocation){$("gpsTxt").textContent="Ubicación GPS: no disponible en este equipo.";return}
+  $("gpsTxt").textContent="Ubicación GPS: buscando…";$("gpsTxt").parentElement.classList.remove("ok");
+  navigator.geolocation.getCurrentPosition(pos=>{
+    gps={lat:pos.coords.latitude,lon:pos.coords.longitude,prec:pos.coords.accuracy};
+    $("gpsTxt").textContent="GPS: "+coordTexto(gps);$("gpsTxt").parentElement.classList.add("ok");render();
+  },err=>{
+    gps=null;$("gpsTxt").textContent=err.code===1?"Ubicación GPS: permiso denegado. Actívelo en Ajustes del teléfono.":"Ubicación GPS: sin señal. Toque «Actualizar».";render();
+  },{enableHighAccuracy:true,timeout:20000,maximumAge:60000});
+}
 function testigoActual(){
   const v=$("testigoSel").value;
   if(v==="otro")return{nombre:titulo($("testigo").value),cargo:""};
@@ -364,6 +407,7 @@ function datos(){
     tipo:catActual().nombre,m2:$("m2").value,infraccion:textoInfraccion(),
     citacion:modo(),jpl_fecha:$("jplF").value,jpl_hora:$("jplH").value,
     testigo:testigoActual().nombre,testigo_cargo:testigoActual().cargo,
+    coordenadas:coordTexto(gps),
     recibe_nombre:PRESENCIAL(modo())?recibe().nombre:"",recibe_rut:PRESENCIAL(modo())?recibe().rut:"",
     se_nego:PRESENCIAL(modo())&&$("negado").checked?"Sí":"No",
     juzgado:conf.juzgado||"Juzgado de Policía Local de Pucón"
@@ -423,19 +467,22 @@ function aviso(el,txt,ok){el.className="status "+(ok===true?"ok":ok===false?"bad
    iPhone: se abre el menú Compartir (Imprimir o app de la impresora). Otros equipos: se abre el PDF. */
 const ES_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const COPIAS={citado:"EJEMPLAR DEL CITADO",inspector:"COPIA INSPECTOR"};
-let pdfs={};
 
-async function prepararPdf(d){
-  pdfs={};["btnCitado","btnInspector","btnPdf"].forEach(id=>$(id).disabled=true);
-  $("printHint").textContent="Preparando documentos…";
-  try{
-    const mk=(lbls,nom)=>new File([crearPdf(lbls.map(l=>dibujarParte(d,l,11.811)))],nom,{type:"application/pdf"});
-    pdfs.citado=mk([COPIAS.citado],"Parte_"+d.numero+"_citado.pdf");
-    pdfs.inspector=mk([COPIAS.inspector],"Parte_"+d.numero+"_inspector.pdf");
-    pdfs.ambos=mk([COPIAS.citado,COPIAS.inspector],"Parte_"+d.numero+".pdf");
-    ["btnCitado","btnInspector","btnPdf"].forEach(id=>$(id).disabled=false);
-    $("printHint").textContent=ES_IOS?"Cada botón abre el menú Compartir: elija «Imprimir» o la app de la impresora.":"Cada botón abre el documento listo para imprimir.";
-  }catch(e){$("printHint").textContent="No se pudo preparar el documento. Intente «Reimprimir último parte» en Ajustes."}
+/* El PDF se arma al tocar el botón, para que lleve la fecha y hora reales de impresión */
+function prepararPdf(d){
+  ["btnCitado","btnInspector","btnPdf"].forEach(id=>$(id).disabled=false);
+  $("printHint").textContent=ES_IOS?"Cada botón abre el menú Compartir: elija «Imprimir» o la app de la impresora.":"Cada botón abre el documento listo para imprimir.";
+}
+function imprimir(tipo){
+  if(!emitido)return;
+  const d=emitido,cuando=new Date(),pie="Impreso el "+fechaCorta(ahoraTxt(cuando).slice(0,10))+" a las "+ahoraTxt(cuando).slice(11,19)+" h";
+  const lbls=tipo==="ambos"?[COPIAS.citado,COPIAS.inspector]:[COPIAS[tipo]];
+  const nom="Parte_"+d.numero+(tipo==="ambos"?"":"_"+tipo)+".pdf";
+  let f;
+  try{f=new File([crearPdf(lbls.map(l=>dibujarParte(d,l,11.811,pie)))],nom,{type:"application/pdf"})}
+  catch(e){$("printHint").textContent="No se pudo preparar el documento. Intente de nuevo.";return}
+  bitacora(tipo==="citado"?"Impresión ejemplar del citado":tipo==="inspector"?"Impresión copia inspector":"PDF de ambos ejemplares",d.numero,pie);
+  abrirPdf(f);
 }
 async function abrirPdf(f){
   if(!f)return;
@@ -457,7 +504,7 @@ function prepararLogo(){
 }
 
 /* Dibuja el parte en rollo: 104 mm de ancho, largo según contenido. K = px por mm. */
-function dibujarParte(d,copia,K){
+function dibujarParte(d,copia,K,pie){
   const W=104,M=4,L=M,R=W-M,AN=R-L,PT=0.3528;
   const SANS="Helvetica, Arial, sans-serif",SERIF="Georgia, 'Times New Roman', serif";
   const med=document.createElement("canvas").getContext("2d");
@@ -486,6 +533,7 @@ function dibujarParte(d,copia,K){
   sep(false);
   fila([[L,C3,"Fecha",fechaCorta(d.fecha)],[L+C3+3,C3,"Hora",d.hora?d.hora+" h":""],[L+2*(C3+3),C3,"Rol de avalúo",d.rol||"—"]]);
   fila([[L,AN,"Lugar de la infracción",d.lugar]]);
+  if(d.coordenadas)fila([[L,AN,"Coordenadas GPS",d.coordenadas]]);
   sep(true);sec("INFRACTOR");
   const C2=2*C3+3,X3=L+2*(C3+3);
   fila([[L,C2,"Nombre",d.nombre],[X3,C3,"RUT",d.rut]]);
@@ -522,7 +570,9 @@ function dibujarParte(d,copia,K){
   sep(false);
   partir("Conserve este documento y preséntelo al comparecer ante el Juzgado. La no comparecencia faculta al tribunal para proceder en su rebeldía.",AN,7,0).forEach(l=>{T(l,W/2,y+2.6,7,{al:"center"});y+=3.1});
   y+=0.6;sep(true);
-  T(copia,W/2,y+3,8.5,{b:1,al:"center"});y+=4+M;
+  T(copia,W/2,y+3,8.5,{b:1,al:"center"});y+=4;
+  if(pie){T(pie,W/2,y+2.8,7.5,{al:"center"});y+=3.6}
+  y+=M;
 
   const cv=document.createElement("canvas");cv.width=Math.round(W*K);cv.height=Math.round(y*K);
   const c=cv.getContext("2d");c.scale(K,K);c.fillStyle="#fff";c.fillRect(0,0,W,y);
@@ -572,35 +622,76 @@ $("btnEmitir").onclick=()=>{
   if(!store.set("dom_partes",reg)){aviso($("status"),"No se pudo guardar en el teléfono. No imprima: use el talonario.",false);return}
   cfg.corr=Number(cfg.corr)+1;guardarUsuario();
   emitido=d;bloquear(true);$("emitidoTxt").textContent="Parte "+d.numero+" emitido.";aviso($("status"),"");
+  bitacora("Emisión de parte",d.numero,[d.nombre,d.coordenadas?"GPS "+d.coordenadas:"sin GPS"].filter(Boolean).join(" · "));
   render();cabecera();window.scrollTo(0,0);
   prepararPdf(d);
 };
-$("btnCitado").onclick=()=>abrirPdf(pdfs.citado);
-$("btnInspector").onclick=()=>abrirPdf(pdfs.inspector);
-$("btnPdf").onclick=()=>abrirPdf(pdfs.ambos);
+$("btnCitado").onclick=()=>imprimir("citado");
+$("btnInspector").onclick=()=>imprimir("inspector");
+$("btnPdf").onclick=()=>imprimir("ambos");
+/* Muestra un parte ya emitido en modo solo lectura, listo para reimprimir */
+function mostrarParte(d){
+  emitido=Object.assign({juzgado:conf.juzgado||"Juzgado de Policía Local de Pucón"},d);
+  bloquear(true);$("emitidoTxt").textContent="Parte "+emitido.numero+" (reimpresión).";
+  bitacora("Consulta para reimpresión",emitido.numero);
+  verPanel(null);render();prepararPdf(emitido);
+}
 $("btnUltimo").onclick=()=>{
   const reg=store.get("dom_partes",[]).filter(x=>x.serie===cfg.serie);
   if(!reg.length){aviso($("cfgStatus"),"Aún no hay partes emitidos con este usuario.",false);return}
-  emitido=reg[reg.length-1];bloquear(true);$("emitidoTxt").textContent="Parte "+emitido.numero+" (reimpresión).";
-  verAjustes(false);render();prepararPdf(emitido);
+  mostrarParte(reg[reg.length-1]);
 };
+
+/* ===== Mis partes ===== */
+function partesDelUsuario(){
+  const mapa={};
+  store.get("dom_remotos_"+cfg.serie,[]).forEach(r=>{mapa[r.numero]=Object.assign({enviado:true},r)});
+  store.get("dom_partes",[]).filter(x=>x.serie===cfg.serie).forEach(l=>{mapa[l.numero]=Object.assign({},mapa[l.numero]||{},l,{enviado:l.enviado||!!mapa[l.numero]})});
+  return Object.values(mapa).sort((a,b)=>String(b.numero).localeCompare(String(a.numero),"es",{numeric:true}));
+}
+function pintarLista(){
+  const ul=$("listaPartes"),lista=partesDelUsuario();ul.textContent="";
+  if(!lista.length){const li=document.createElement("li");li.textContent="Aún no hay partes emitidos con este usuario.";ul.appendChild(li);return}
+  lista.forEach(d=>{
+    const li=document.createElement("li");
+    const n=document.createElement("div");n.className="num";n.textContent=d.numero;
+    const e=document.createElement("span");e.className="estado "+(d.enviado?"env":"pen");e.textContent=d.enviado?"Enviado":"Pendiente";n.appendChild(e);
+    const det=document.createElement("div");det.className="det";det.textContent=[fechaCorta(d.fecha),d.nombre,d.tipo].filter(Boolean).join(" · ");
+    const b=document.createElement("button");b.type="button";b.className="small";b.textContent="Ver y reimprimir";b.onclick=()=>mostrarParte(d);
+    li.append(n,b,det);ul.appendChild(li);
+  });
+}
+async function abrirLista(){
+  verPanel("lista");pintarLista();aviso($("listaStatus"),"Actualizando desde la planilla…");
+  try{
+    const j=await llamar("listar");
+    const rem=(j.partes||[]).map(r=>{
+      if(!r.testigo_cargo&&/,\s*(Inspector|Profesional) DOM$/.test(r.testigo||"")){const i=r.testigo.lastIndexOf(",");r.testigo_cargo=r.testigo.slice(i+1).trim();r.testigo=r.testigo.slice(0,i).trim()}
+      return r;
+    });
+    store.set("dom_remotos_"+cfg.serie,rem);pintarLista();aviso($("listaStatus"),"Actualizado: "+rem.length+" partes en la planilla.",true);
+  }catch(e){aviso($("listaStatus"),"Sin conexión: se muestran los partes guardados en este teléfono.")}
+}
+$("btnLista").onclick=abrirLista;
+$("btnCerrarLista").onclick=()=>verPanel(null);
 $("btnNuevo").onclick=()=>{
   emitido=null;bloquear(false);
   ["rolA","rolB","lugar","nombre","rut","dom","fono","mail","m2","obs","libre","testigo","recNombre","recRut"].forEach(id=>$(id).value="");$("recMismo").checked=true;
-  $("testigoSel").value="";$("negado").checked=false;ahora();render();window.scrollTo(0,0);
+  $("testigoSel").value="";$("negado").checked=false;ahora();gps=null;pedirGps();render();window.scrollTo(0,0);
 };
 
 /* ===== Conexión con la planilla ===== */
 async function llamar(accion,extra,cred){
   cred=cred||cfg;
-  let r;
+  let r,bitEnvio=[];
   const ctl=typeof AbortController!=="undefined"?new AbortController():null;
-  const t=ctl?setTimeout(()=>ctl.abort(),12000):0;
+  const t=ctl?setTimeout(()=>ctl.abort(),accion==="pdf"?45000:15000):0;
   try{
-    r=await fetch(SERVICIO,{method:"POST",signal:ctl?ctl.signal:undefined,headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(Object.assign({accion:accion,usuario:cred.usuario,serie:cred.serie,clave:cred.clave},extra||{}))});
+    r=await fetch(SERVICIO,{method:"POST",signal:ctl?ctl.signal:undefined,headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(Object.assign({accion:accion,usuario:cred.usuario,serie:cred.serie,clave:cred.clave,bitacora:bitEnvio=store.get("dom_bitacora",[]).slice(0,200)},extra||{}))});
   }catch(e){const err=new Error("Sin conexión con la planilla. Los partes siguen guardados en el teléfono; intente de nuevo con internet.");err.red=true;throw err}
   finally{if(t)clearTimeout(t)}
   let j;try{j=await r.json()}catch(e){const err=new Error("La planilla no respondió correctamente. Intente de nuevo.");err.red=true;throw err}
+  if(j.bitacora_ok){const ids=new Set(bitEnvio.map(x=>x.id));store.set("dom_bitacora",store.get("dom_bitacora",[]).filter(x=>!ids.has(x.id)))}
   if(!j.ok)throw new Error(j.error||"La planilla rechazó la solicitud.");
   return j;
 }
@@ -629,10 +720,10 @@ $("loginForm").addEventListener("submit",async ev=>{
     const serie=(j.serie||u).toUpperCase();
     us[u]=Object.assign(us[u]||{},{hash:h,nombre:j.inspector||"",serie:serie});store.set("dom_users",us);
     cfg={usuario:u,serie:serie,clave:k,insp:j.inspector||u,corr:corrDe(serie,us[u])};
-    aplicarRespuesta(j);entrar(u);
+    aplicarRespuesta(j);entrar(u);bitacora("Inicio de sesión");
   }catch(e){
     if(e.red&&us[u]&&us[u].hash&&h&&us[u].hash===h){
-      const serie=us[u].serie||u;cfg={usuario:u,serie:serie,clave:k,insp:us[u].nombre||u,corr:corrDe(serie,us[u])};entrar(u);
+      const serie=us[u].serie||u;cfg={usuario:u,serie:serie,clave:k,insp:us[u].nombre||u,corr:corrDe(serie,us[u])};entrar(u);bitacora("Inicio de sesión sin conexión");
       aviso($("status"),"Ingreso sin conexión. Envíe los partes a la planilla cuando tenga internet.");
     }else if(e.red&&us[u]&&us[u].hash){aviso($("lgMsg"),"Usuario o contraseña incorrectos.",false)}
     else if(e.red){aviso($("lgMsg"),"Sin conexión. El primer ingreso en este teléfono requiere internet.",false)}
@@ -643,9 +734,9 @@ $("loginForm").addEventListener("submit",async ev=>{
 function entrar(u){
   store.set("dom_ultimo",u);$("lgPass").value="";
   $("login").hidden=true;$("app").hidden=false;
-  llenarCatalogo();llenarTestigos();cabecera();render();window.scrollTo(0,0);
+  llenarCatalogo();llenarTestigos();cabecera();render();window.scrollTo(0,0);pedirGps();
 }
-$("btnSalir").onclick=()=>{cfg={usuario:"",serie:"",clave:"",insp:"",corr:1};location.reload()};
+$("btnSalir").onclick=()=>{bitacora("Cierre de sesión");cfg={usuario:"",serie:"",clave:"",insp:"",corr:1};location.reload()};
 $("lgEye").onclick=()=>{
   const p=$("lgPass"),ver=p.type==="password";p.type=ver?"text":"password";
   $("lgEye").setAttribute("aria-pressed",ver);$("lgEye").setAttribute("aria-label",ver?"Ocultar contraseña":"Mostrar contraseña");
@@ -660,19 +751,34 @@ $("btnSync").onclick=async()=>{
   const reg=store.get("dom_partes",[]);const pend=reg.filter(x=>!x.enviado&&x.serie===cfg.serie);
   aviso($("status"),pend.length?"Enviando "+pend.length+" partes…":"Actualizando catálogo…");
   try{
-    const j=await llamar("enviar",{partes:pend.map(x=>Object.assign({},x,{testigo:x.testigo_cargo?x.testigo+", "+x.testigo_cargo:x.testigo}))});
+    if(pend.length)bitacora("Envío a planilla",pend.map(x=>x.numero).join(", "),pend.length+" partes");
+    const j=await llamar("enviar",{partes:pend});
     const ok=new Set((j.recibidos||[]).concat(j.duplicados||[]));
     reg.forEach(x=>{if(ok.has(x.numero))x.enviado=true});store.set("dom_partes",reg);
     aplicarRespuesta(j);
-    aviso($("status"),pend.length?"Enviados: "+(j.recibidos||[]).length+". Ya estaban en la planilla: "+(j.duplicados||[]).length+".":"Catálogo y datos actualizados.",true);
+    /* Respaldo PDF de cada parte enviado (una sola vez por parte) */
+    const sinPdf=reg.filter(x=>x.enviado&&!x.pdf&&x.serie===cfg.serie);let subidos=0,fallidos=0;
+    for(const x of sinPdf){
+      aviso($("status"),"Respaldando PDF "+(subidos+fallidos+1)+" de "+sinPdf.length+"…");
+      try{
+        const pie="Respaldo digital generado el "+fechaCorta(ahoraTxt().slice(0,10))+" a las "+ahoraTxt().slice(11,19)+" h";
+        const bytes=crearPdf([dibujarParte(x,COPIAS.citado,8,pie),dibujarParte(x,COPIAS.inspector,8,pie)]);
+        let bin="";for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));
+        await llamar("pdf",{numero:x.numero,pdf:btoa(bin)});x.pdf=true;bitacora("Respaldo PDF en Drive",x.numero);store.set("dom_partes",reg);subidos++;
+      }catch(e){fallidos++}
+    }
+    aviso($("status"),(pend.length?"Enviados: "+(j.recibidos||[]).length+". Ya estaban en la planilla: "+(j.duplicados||[]).length+".":"Catálogo y datos actualizados.")+(sinPdf.length?" Respaldos PDF: "+subidos+(fallidos?" (fallaron "+fallidos+"; se reintentará en el próximo envío)":"")+".":""),!fallidos);
   }catch(e){aviso($("status"),e.message,false)}
 };
 
-function verAjustes(on){
-  $("ajustes").hidden=!on;document.body.classList.toggle("vista-ajustes",on);
-  $("btnAjustes").setAttribute("aria-pressed",on);$("btnAjustes").setAttribute("aria-label",on?"Volver al parte":"Ajustes");
+/* Pantallas independientes: Ajustes y Mis partes */
+function verPanel(id){
+  ["ajustes","lista"].forEach(k=>$(k).hidden=k!==id);
+  document.body.classList.toggle("vista-panel",!!id);
+  const on=id==="ajustes";$("btnAjustes").setAttribute("aria-pressed",on);$("btnAjustes").setAttribute("aria-label",on?"Volver al parte":"Ajustes");
   window.scrollTo(0,0);
 }
+function verAjustes(on){verPanel(on?"ajustes":null)}
 function abrirAjustes(){
   $("cfgCorr").value=cfg.corr||1;aviso($("cfgStatus"),"");
   verAjustes(true);
@@ -692,7 +798,7 @@ $("btnPrueba").onclick=()=>{
 $("btnCsv").onclick=()=>{
   const reg=store.get("dom_partes",[]);
   if(!reg.length){aviso($("cfgStatus"),"Aún no hay partes en este teléfono.",false);return}
-  const cols=["numero","fecha","hora","rol","lugar","nombre","rut","domicilio","telefono","correo","tipo","m2","infraccion","citacion","jpl_fecha","jpl_hora","testigo","testigo_cargo","recibe_nombre","recibe_rut","se_nego","inspector","enviado"];
+  const cols=["numero","fecha","hora","rol","lugar","nombre","rut","domicilio","telefono","correo","tipo","m2","infraccion","citacion","jpl_fecha","jpl_hora","testigo","testigo_cargo","recibe_nombre","recibe_rut","coordenadas","se_nego","inspector","enviado"];
   const esc=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
   const csv="﻿"+cols.join(";")+"\n"+reg.map(r=>cols.map(c=>esc(c==="enviado"?(r[c]?"Sí":"No"):r[c])).join(";")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
@@ -719,6 +825,7 @@ document.querySelectorAll("form input,form select,form textarea").forEach(el=>el
 $("rolB").addEventListener("keydown",e=>{if(e.key==="Backspace"&&!$("rolB").value)$("rolA").focus()});
 $("rut").addEventListener("blur",()=>{if(rutValido($("rut").value)){$("rut").value=formatoRut($("rut").value);render()}});
 document.querySelectorAll('input[name="modo"]').forEach(r=>r.addEventListener("change",render));
+$("btnGps").onclick=pedirGps;
 $("recMismo").addEventListener("change",()=>{render();if(!$("recMismo").checked)$("recNombre").focus()});
 $("recRut").addEventListener("blur",()=>{if(rutValido($("recRut").value)){$("recRut").value=formatoRut($("recRut").value);render()}});
 $("testigoSel").addEventListener("change",()=>{render();if($("testigoSel").value==="otro")$("testigo").focus()});
